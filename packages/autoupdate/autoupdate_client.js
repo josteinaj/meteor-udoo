@@ -74,7 +74,7 @@ Autoupdate._retrySubscription = function () {
     onReady: function () {
       if (Package.reload) {
         Deps.autorun(function (computation) {
-          if (ClientVersions.findOne({ current: true }) &&
+          if (ClientVersions.findOne({current: true}) &&
               (! ClientVersions.findOne({_id: autoupdateVersion}))) {
             computation.stop();
             Package.reload.Reload._reload();

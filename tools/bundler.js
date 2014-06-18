@@ -909,8 +909,7 @@ _.extend(ClientTarget.prototype, {
         where: "client",
         type: type,
         cacheable: file.cacheable,
-        url: file.url,
-        refreshable: file.refreshable
+        url: file.url
       };
 
       if (file.sourceMap) {
