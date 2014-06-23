@@ -246,7 +246,6 @@ var compileBuild = function (unipackage, inputSourceArch, packageLoader,
   var js = [];
   var sources = [];
   var watchSet = inputSourceArch.watchSet.clone();
-  var refreshableWatchSet = new watch.WatchSet();
 
   // *** Determine and load active plugins
 
@@ -323,7 +322,6 @@ var compileBuild = function (unipackage, inputSourceArch, packageLoader,
       } else {
         allHandlers[ext] = sourceHandler.handler;
         sourceExtensions[ext] = !!sourceHandler.isTemplate;
-
         if (sourceHandler.isRefreshable)
           refreshableExtensions[ext] = true;
       }
@@ -356,13 +354,6 @@ var compileBuild = function (unipackage, inputSourceArch, packageLoader,
     watch.readAndWatchFile(watchSet, shrinkwrapPath);
   }
 
-  var refreshableRegex = _.map(
-    refreshableExtensions,
-    function (obj, ext) {
-      return new RegExp('\\.' + utils.quotemeta(ext) + '$');
-    }
-  );
-
   // *** Process each source file
   var addAsset = function (contents, relPath, hash) {
     // XXX hack
@@ -385,14 +376,9 @@ var compileBuild = function (unipackage, inputSourceArch, packageLoader,
     var fileOptions = _.clone(source.fileOptions) || {};
     var absPath = path.resolve(inputSourceArch.pkg.sourceRoot, relPath);
     var filename = path.basename(relPath);
-    var isRefreshable = _.any(refreshableRegex, function (re) {
-      return re.test(filename);
-    });
-
-    var file = watch.readAndWatchFileWithHash( isRefreshable
-                                               ? refreshableWatchSet
-                                               : watchSet, absPath );
-
+    var sourceWatchSet = new watch.WatchSet();
+    var sourceIsWatched = false;
+    var file = watch.readAndWatchFileWithHash(sourceWatchSet, absPath);
     var contents = file.contents;
 
     sources.push(relPath);
@@ -565,6 +551,7 @@ var compileBuild = function (unipackage, inputSourceArch, packageLoader,
           throw new Error("'section' must be 'head' or 'body'");
         if (typeof options.data !== "string")
           throw new Error("'data' option to appendDocument must be a string");
+        sourceIsWatched = true;
         resources.push({
           type: options.section,
           data: new Buffer(options.data, 'utf8')
@@ -576,8 +563,10 @@ var compileBuild = function (unipackage, inputSourceArch, packageLoader,
                           "browser targets");
         if (typeof options.data !== "string")
           throw new Error("'data' option to addStylesheet must be a string");
+        sourceIsWatched = true;
         resources.push({
           type: "css",
+          refreshable: true,
           data: new Buffer(options.data, 'utf8'),
           servePath: path.join(inputSourceArch.pkg.serveRoot, options.path),
           sourceMap: options.sourceMap
@@ -590,6 +579,7 @@ var compileBuild = function (unipackage, inputSourceArch, packageLoader,
           throw new Error("'sourcePath' option must be supplied to addJavaScript. Consider passing inputPath.");
         if (options.bare && ! archinfo.matches(inputSourceArch.arch, "browser"))
           throw new Error("'bare' option may only be used for browser targets");
+        sourceIsWatched = true;
         js.push({
           source: options.data,
           sourcePath: options.sourcePath,
@@ -601,6 +591,7 @@ var compileBuild = function (unipackage, inputSourceArch, packageLoader,
       addAsset: function (options) {
         if (! (options.data instanceof Buffer))
           throw new Error("'data' option to addAsset must be a Buffer");
+        sourceIsWatched = true;
         addAsset(options.data, options.path);
       },
       error: function (options) {
@@ -621,6 +612,10 @@ var compileBuild = function (unipackage, inputSourceArch, packageLoader,
 
       // Recover by ignoring this source file (as best we can -- the
       // handler might already have emitted resources)
+    }
+
+    if (sourceIsWatched) {
+      watchSet.merge(sourceWatchSet);
     }
   });
 
@@ -689,7 +684,6 @@ var compileBuild = function (unipackage, inputSourceArch, packageLoader,
     uses: inputSourceArch.uses,
     implies: inputSourceArch.implies,
     watchSet: watchSet,
-    refreshableWatchSet: refreshableWatchSet,
     nodeModulesPath: nodeModulesPath,
     prelinkFiles: results.files,
     packageVariables: packageVariables,

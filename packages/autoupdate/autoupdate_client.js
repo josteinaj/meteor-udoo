@@ -74,15 +74,17 @@ Autoupdate._retrySubscription = function () {
     onReady: function () {
       if (Package.reload) {
         Deps.autorun(function (computation) {
-          if (ClientVersions.findOne({current: true}) &&
-              (! ClientVersions.findOne({_id: autoupdateVersion}))) {
+          if (! ClientVersions.findOne({_id: autoupdateVersion,
+                                        refreshable: false })) {
             computation.stop();
             Package.reload.Reload._reload();
-          } else  {
-            var doc = ClientVersions.findOne({
-              _id: autoupdateVersionRefreshable
-            });
+          } else if (! ClientVersions.findOne({
+              _id: autoupdateVersionRefreshable,
+              refreshable: true })) {
+            var doc = ClientVersions.findOne({ refreshable: true });
             if (doc) {
+              autoupdateVersionRefreshable = doc._id;
+
               // Replace the old CSS link with the new CSS link.
               var oldlink = document.getElementsByTagName("link").item(0);
               oldlink.parentNode.removeChild(oldlink);

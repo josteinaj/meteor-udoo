@@ -408,7 +408,6 @@ var Target = function (options) {
 
   // On-disk dependencies of this target.
   self.watchSet = new watch.WatchSet();
-  self.refreshableWatchSet = new watch.WatchSet();
 
   // Map from package name to package directory of all packages used.
   self.pluginProviderPackageDirs = {};
@@ -592,6 +591,7 @@ _.extend(Target.prototype, {
 
     // Copy their resources into the bundle in order
     _.each(self.builds, function (build) {
+
       var isApp = ! build.pkg.name;
 
       // Emit the resources
@@ -626,11 +626,18 @@ _.extend(Target.prototype, {
 
       // Now look for the other kinds of resources.
       _.each(resources, function (resource) {
+
+      if (_.any(_.keys(build.watchSet.files), function (f) {
+        return f.indexOf(".css") != -1;
+      })) {
+      }
+
         if (resource.type === "asset")
           return;  // already handled
 
         if (_.contains(["js", "css"], resource.type)) {
-          if (resource.type === "css" && ! isBrowser)
+          if (resource.type === "css" && ! isBrowser) {
+            console.log("IGNORING");
             // XXX might be nice to throw an error here, but then we'd
             // have to make it so that package.js ignores css files
             // that appear in the server directories in an app tree
@@ -638,6 +645,7 @@ _.extend(Target.prototype, {
             // XXX XXX can't we easily do that in the css handler in
             // meteor.js?
             return;
+          }
 
           var f = new File({data: resource.data, cacheable: false});
 
@@ -690,9 +698,14 @@ _.extend(Target.prototype, {
         throw new Error("Unknown type " + resource.type);
       });
 
+      if (_.any(_.keys(build.watchSet.files), function (f) {
+        return f.indexOf(".css") != -1;
+      })) {
+        console.log(isOs);
+        console.log(_.keys(build.watchSet.files));
+      }
       // Depend on the source files that produced these resources.
       self.watchSet.merge(build.watchSet);
-      self.refreshableWatchSet.merge(build.refreshableWatchSet);
 
       // Remember the versions of all of the build-time dependencies
       // that were used in these resources. Depend on them as well.
@@ -733,11 +746,6 @@ _.extend(Target.prototype, {
   getWatchSet: function () {
     var self = this;
     return self.watchSet;
-  },
-
-  getRefreshableWatchSet: function () {
-    var self = this;
-    return self.refreshableWatchSet;
   },
 
   getPluginProviderPackageDirs: function () {
@@ -1581,20 +1589,24 @@ var writeSiteArchive = function (targets, outputPath, options) {
     builder.writeJson('star.json', json);
 
     // Merge the WatchSet of everything that went into the bundle.
-    var watchSet = new watch.WatchSet();
-    var refreshableWatchSet = new watch.WatchSet();
+    var clientWatchSet = new watch.WatchSet();
+    var serverWatchSet = new watch.WatchSet();
     var dependencySources = [builder].concat(_.values(targets));
     _.each(dependencySources, function (s) {
-      watchSet.merge(s.getWatchSet());
-      refreshableWatchSet.merge(s.getRefreshableWatchSet());
+      if (s instanceof ServerTarget) {
+        serverWatchSet.merge(s.getWatchSet());
+      } else {
+        clientWatchSet.merge(s.getWatchSet());
+      }
     });
 
+    // console.log(_.keys(serverWatchSet.files));
     // We did it!
     builder.complete();
-
+    // console.log("serverWatchSet", serverWatchSet);
     return {
-      watchSet: watchSet,
-      refreshableWatchSet: refreshableWatchSet,
+      clientWatchSet: clientWatchSet,
+      serverWatchSet: serverWatchSet,
       starManifest: json
     };
   } catch (e) {
@@ -1673,8 +1685,8 @@ exports.bundle = function (options) {
                             " " + release.current.name : "");
 
   var success = false;
-  var watchSet = new watch.WatchSet();
-  var refreshableWatchSet = new watch.WatchSet();
+  var serverWatchSet = new watch.WatchSet();
+  var clientWatchSet = new watch.WatchSet();
   var starResult = null;
   var messages = buildmessage.capture({
     title: "building the application"
@@ -1683,6 +1695,7 @@ exports.bundle = function (options) {
     var controlProgram = null;
 
     var makeClientTarget = function (app) {
+      console.log("make client target");
       var client = new ClientTarget({
         packageLoader: packageLoader,
         arch: "browser"
@@ -1711,6 +1724,7 @@ exports.bundle = function (options) {
     };
 
     var makeServerTarget = function (app, clientTarget) {
+      console.log("make server target");
       var targetOptions = {
         packageLoader: packageLoader,
         arch: buildOptions.arch || archinfo.host(),
@@ -1735,7 +1749,7 @@ exports.bundle = function (options) {
     // case.)
 
     var includeDefaultTargets = watch.readAndWatchFile(
-      watchSet, path.join(appDir, 'no-default-targets')) === null;
+      serverWatchSet, path.join(appDir, 'no-default-targets')) === null;
 
     if (includeDefaultTargets) {
       // Create a Unipackage object that represents the app
@@ -1757,7 +1771,7 @@ exports.bundle = function (options) {
     var programs = [];
     var programsDir = project.project.getProgramsDirectory();
     var programsSubdirs = project.project.getProgramsSubdirs({
-      watchSet: watchSet
+      serverWatchSet: serverWatchSet
     });
 
     _.each(programsSubdirs, function (item) {
@@ -1775,7 +1789,7 @@ exports.bundle = function (options) {
       // the package.js file here, though (but we do restart if it is later
       // added or changed).
       if (watch.readAndWatchFile(
-        watchSet, path.join(programsDir, item, 'package.js')) === null) {
+        serverWatchSet, path.join(programsDir, item, 'package.js')) === null) {
         return;
       }
 
@@ -1785,7 +1799,7 @@ exports.bundle = function (options) {
       var attrsJsonAbsPath = path.join(programsDir, item, 'attributes.json');
       var attrsJsonRelPath = path.join('programs', item, 'attributes.json');
       var attrsJsonContents = watch.readAndWatchFile(
-        watchSet, attrsJsonAbsPath);
+        serverWatchSet, attrsJsonAbsPath);
 
       var attrsJson = {};
       if (attrsJsonContents !== null) {
@@ -1905,8 +1919,8 @@ exports.bundle = function (options) {
       controlProgram: controlProgram,
       releaseName: releaseName
     });
-    watchSet.merge(starResult.watchSet);
-    refreshableWatchSet.merge(starResult.refreshableWatchSet);
+    serverWatchSet.merge(starResult.serverWatchSet);
+    clientWatchSet.merge(starResult.clientWatchSet);
 
     success = true;
   });
@@ -1916,8 +1930,8 @@ exports.bundle = function (options) {
 
   return {
     errors: success ? false : messages,
-    watchSet: watchSet,
-    refreshableWatchSet: refreshableWatchSet,
+    serverWatchSet: serverWatchSet,
+    clientWatchSet: clientWatchSet,
     starManifest: starResult && starResult.starManifest
   };
 };
@@ -1993,7 +2007,6 @@ exports.buildJsImage = function (options) {
   return {
     image: target.toJsImage(),
     watchSet: target.getWatchSet(),
-    refreshableWatchSet: target.getRefreshableWatchSet(),
     pluginProviderPackageDirs: target.getPluginProviderPackageDirs()
   };
 };

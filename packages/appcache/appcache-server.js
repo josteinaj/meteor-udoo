@@ -166,6 +166,7 @@ WebApp.connectHandlers.use(function(req, res, next) {
   );
   manifest += "*" + "\n";
 
+  console.log(manifest);
   // content length needs to be based on bytes
   var body = new Buffer(manifest);
 

@@ -3,8 +3,7 @@ var path = Npm.require('path');
 var less = Npm.require('less');
 var Future = Npm.require('fibers/future');
 
-Plugin.registerSourceHandler("less", { isRefreshable: true },
-    function (compileStep) {
+Plugin.registerSourceHandler("less", function (compileStep) {
   // XXX annoying that this is replicated in .css, .less, and .styl
   if (! compileStep.archMatches('browser')) {
     // XXX in the future, might be better to emit some kind of a

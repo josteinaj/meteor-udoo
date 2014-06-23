@@ -46,56 +46,41 @@ Autoupdate.autoupdateVersion = null;
 Autoupdate.autoupdateVersionRefreshable = null;
 
 Meteor.startup(function () {
+  // Clear all versions on startup.
+  ClientVersions.remove({});
+
   // Allow people to override Autoupdate.autoupdateVersion before
   // startup. Tests do this.
-  if (Autoupdate.autoupdateVersion === null)
+  if (Autoupdate.autoupdateVersion === null) {
     Autoupdate.autoupdateVersion =
-      process.env.AUTOUPDATE_VERSION ||
-      process.env.SERVER_ID || // XXX COMPAT 0.6.6
-      WebApp.clientHash;
+        process.env.AUTOUPDATE_VERSION ||
+        process.env.SERVER_ID || // XXX COMPAT 0.6.6
+        WebApp.clientHashNonRefreshable();
 
-  if (Autoupdate.autoupdateVersionRefreshable === null)
+    ClientVersions.insert({
+      _id: Autoupdate.autoupdateVersion,
+      current: true,
+      refreshable: false
+    });
+  }
+
+  if (Autoupdate.autoupdateVersionRefreshable === null) {
     Autoupdate.autoupdateVersionRefreshable =
-      process.env.AUTOUPDATE_VERSION ||
-      process.env.SERVER_ID || // XXX COMPAT 0.6.6
-      Random.id();
+        process.env.AUTOUPDATE_VERSION ||
+        process.env.SERVER_ID || // XXX COMPAT 0.6.6
+        WebApp.clientHashRefreshable();
+  }
 
   // Make autoupdateVersion available on the client.
   __meteor_runtime_config__.autoupdateVersion = Autoupdate.autoupdateVersion;
   __meteor_runtime_config__.autoupdateVersionRefreshable =
     Autoupdate.autoupdateVersionRefreshable;
-
-  // Clear all versions on startup.
-  ClientVersions.remove({});
 });
 
 
 Meteor.publish(
   "meteor_autoupdate_clientVersions",
   function () {
-    var self = this;
-    // Using `autoupdateVersion` here is safe because we can't get a
-    // subscription before webapp starts listening, and it doesn't do
-    // that until the startup hooks have run.
-    if (Autoupdate.autoupdateVersion) {
-      if (! ClientVersions.findOne({_id: Autoupdate.autoupdateVersion })) {
-        ClientVersions.insert({
-          _id: Autoupdate.autoupdateVersion,
-          current: true
-        });
-      }
-    } else {
-      // huh? shouldn't happen. Just error the sub.
-      self.error(new Meteor.Error(500, "Autoupdate.autoupdateVersion not set"));
-    }
-
-    if (! ClientVersions.findOne(
-      {_id: Autoupdate.autoupdateVersionRefreshable })) {
-      ClientVersions.insert({
-        _id: Autoupdate.autoupdateVersionRefreshable,
-        assets: WebApp.refreshableAssets
-      });
-    }
     return ClientVersions.find();
   },
   {is_auto: true}
@@ -103,11 +88,46 @@ Meteor.publish(
 
 Meteor.methods({
   __meteor_update_client_assets: function () {
-    WebApp._formBoilerplate({
-      rebuildClient: true
-    });
-    ClientVersions.update(Autoupdate.autoupdateVersionRefreshable,
-      {$set: { assets: WebApp.refreshableAssets }}
-    );
+    WebAppInternals.createClientProgram();
+
+    var oldVersion = Autoupdate.autoupdateVersion;
+    Autoupdate.autoupdateVersion =
+      __meteor_runtime_config__.autoupdateVersion =
+        process.env.AUTOUPDATE_VERSION ||
+        process.env.SERVER_ID || // XXX COMPAT 0.6.6
+        WebApp.clientHashNonRefreshable();
+
+  console.log("newVersion: ", Autoupdate.autoupdateVersion);
+  console.log("oldVersion: ", oldVersion);
+
+    var oldVersionRefreshable = Autoupdate.autoupdateVersionRefreshable;
+    Autoupdate.autoupdateVersionRefreshable =
+      __meteor_runtime_config__.autoupdateVersionRefreshable =
+        process.env.AUTOUPDATE_VERSION ||
+        process.env.SERVER_ID || // XXX COMPAT 0.6.6
+        WebApp.clientHashRefreshable();
+
+  console.log("newVersionRefreshable: ", Autoupdate.autoupdateVersionRefreshable);
+  console.log("oldVersionRefreshable: ", oldVersionRefreshable);
+    WebAppInternals.formBoilerplate();
+
+    if (Autoupdate.autoupdateVersion !== oldVersion) {
+      ClientVersions.remove({ _id: oldVersion });
+      ClientVersions.insert({
+        _id: Autoupdate.autoupdateVersion,
+        current: true,
+        refreshable: false,
+      });
+    }
+
+    if (Autoupdate.autoupdateVersionRefreshable !==
+          oldVersionRefreshable) {
+      ClientVersions.remove({ _id: oldVersionRefreshable });
+      ClientVersions.insert({
+        _id: Autoupdate.autoupdateVersionRefreshable,
+        refreshable: true,
+        assets: WebApp.refreshableAssets
+      });
+    }
   }
 });

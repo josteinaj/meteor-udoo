@@ -179,11 +179,12 @@ var appUrl = function (url) {
 // (but the second is a performance enhancement, not a hard
 // requirement).
 
-var calculateClientHash = function () {
+var calculateClientHash = function (includeFilter) {
   var hash = crypto.createHash('sha1');
-  hash.update(JSON.stringify(__meteor_runtime_config__), 'utf8');
+  // hash.update(JSON.stringify(__meteor_runtime_config__), 'utf8');
   _.each(WebApp.clientProgram.manifest, function (resource) {
-    if (resource.where === 'client' || resource.where === 'internal') {
+      if ((! includeFilter || includeFilter(resource.type)) &&
+          (resource.where === 'client' || resource.where === 'internal')) {
       hash.update(resource.path);
       hash.update(resource.hash);
     }
@@ -211,6 +212,16 @@ var calculateClientHash = function () {
 
 Meteor.startup(function () {
   WebApp.clientHash = calculateClientHash();
+  WebApp.clientHashRefreshable = function () {
+    return calculateClientHash(function (name) {
+      return name === "css";
+    });
+  };
+  WebApp.clientHashNonRefreshable = function () {
+    return calculateClientHash(function (name) {
+      return name !== "css";
+    });
+  };
 });
 
 
@@ -249,8 +260,7 @@ var runWebAppServer = function () {
   var clientDir;
   var clientJson;
 
-  var createClientProgram = function () {
-
+  WebAppInternals.createClientProgram = function () {
     // read the control for the client we'll be serving up
     clientJsonPath = path.join(__meteor_bootstrap__.serverDir,
                                __meteor_bootstrap__.configJson.client);
@@ -284,13 +294,14 @@ var runWebAppServer = function () {
     });
     // Exported for tests.
     WebAppInternals.staticFiles = staticFiles;
-    return {
+    WebApp.clientProgram = {
       manifest: clientJson.manifest
       // XXX do we need a "root: clientDir" field here? it used to be here but
       // was unused.
     };
   };
-  WebApp.clientProgram = createClientProgram();
+  WebAppInternals.createClientProgram();
+
   if (! clientJsonPath || ! clientDir || ! clientJson)
     throw new Error("Client config file not parsed.");
 
@@ -499,25 +510,21 @@ var runWebAppServer = function () {
 
     var htmlAttributes = getHtmlAttributes(request);
 
-    // The only thing that changes from request to request (for now) are the
-    // HTML attributes (used by, eg, appcache), so we can memoize based on that.
     var attributeKey = JSON.stringify(htmlAttributes);
-    if (!_.has(boilerplateByAttributes, attributeKey)) {
-      try {
-        var boilerplateData = _.extend({htmlAttributes: htmlAttributes},
-                                       boilerplateBaseData);
-        var boilerplateInstance = boilerplateTemplate.extend({
-          data: boilerplateData
-        });
-        var boilerplateHtmlJs = boilerplateInstance.render();
-        boilerplateByAttributes[attributeKey] = "<!DOCTYPE html>\n" +
-              HTML.toHTML(boilerplateHtmlJs, boilerplateInstance);
-      } catch (e) {
-        Log.error("Error running template: " + e);
-        res.writeHead(500, headers);
-        res.end();
-        return undefined;
-      }
+    try {
+      var boilerplateData = _.extend({htmlAttributes: htmlAttributes},
+                                     boilerplateBaseData);
+      var boilerplateInstance = boilerplateTemplate.extend({
+        data: boilerplateData
+      });
+      var boilerplateHtmlJs = boilerplateInstance.render();
+      boilerplateByAttributes[attributeKey] = "<!DOCTYPE html>\n" +
+            HTML.toHTML(boilerplateHtmlJs, boilerplateInstance);
+    } catch (e) {
+      Log.error("Error running template: " + e);
+      res.writeHead(500, headers);
+      res.end();
+      return undefined;
     }
 
     res.writeHead(200, headers);
@@ -618,10 +625,7 @@ var runWebAppServer = function () {
     // options:
     //  - rebuildClient: if true, rebuild the clientProgram because it may
     //                   contain changes that are not present in the boilerplate
-    WebApp._formBoilerplate = function (options) {
-      if (options && options.rebuildClient)
-        WebApp.clientProgram = createClientProgram();
-
+    WebAppInternals.formBoilerplate = function () {
       boilerplateBaseData = {
         css: [],
         js: [],
@@ -665,7 +669,7 @@ var runWebAppServer = function () {
       });
       WebApp.refreshableAssets = { css: boilerplateBaseData.css };
     };
-    WebApp._formBoilerplate();
+    WebAppInternals.formBoilerplate();
 
     // only start listening after all the startup code has run.
     var localPort = parseInt(process.env.PORT) || 0;

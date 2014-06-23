@@ -431,6 +431,7 @@ _.extend(AppRunner.prototype, {
       stats.recordPackages(self.appDir);
 
     var bundleApp = function () {
+      console.log("bundling");
       return bundler.bundle({
         outputPath: bundlePath,
         nodeModulesMode: "symlink",
@@ -439,7 +440,7 @@ _.extend(AppRunner.prototype, {
     };
     var bundleResult = bundleApp();
 
-    var watchSet = bundleResult.watchSet;
+    var serverWatchSet = bundleResult.serverWatchSet;
 
     // Read the settings file, if any
     var settings = null;
@@ -455,7 +456,7 @@ _.extend(AppRunner.prototype, {
     // HACK: merge the watchset and messages from reading the settings
     // file into those from the build. This works fine but it sort of
     // messy. Maybe clean it up sometime.
-    watchSet.merge(settingsWatchSet);
+    serverWatchSet.merge(settingsWatchSet);
     if (settingsMessages.hasMessages()) {
       if (! bundleResult.errors)
         bundleResult.errors = settingsMessages;
@@ -465,7 +466,7 @@ _.extend(AppRunner.prototype, {
 
     // HACK: Also make sure we notice when somebody adds a package to
     // the app packages dir that may override a catalog package.
-    catalog.complete.watchLocalPackageDirs(watchSet);
+    catalog.complete.watchLocalPackageDirs(serverWatchSet);
 
     // Were there errors?
     if (bundleResult.errors) {
@@ -521,26 +522,30 @@ _.extend(AppRunner.prototype, {
     // hurry to do this, since watchSet contains a snapshot of the
     // state of the world at the time of bundling, in the form of
     // hashes and lists of matching files in each directory.
-    var watcher;
-    var refreshableWatcher;
+    var serverWatcher;
+    var clientWatcher;
 
     var setupWatchers = function () {
-      if (watcher)
-        watcher.stop();
-      watcher = new watch.Watcher({
-        watchSet: watchSet,
+      // console.log("serverWatchSet", serverWatchSet);
+      // console.log("clientWatchSet", bundleResult.clientWatchSet);
+      if (serverWatcher)
+        serverWatcher.stop();
+      serverWatcher = new watch.Watcher({
+        watchSet: serverWatchSet,
         onChange: function () {
+          console.log("Server watcher changed");
           self._runFutureReturn({
             outcome: 'changed',
             bundleResult: bundleResult
           });
         }
       });
-      if (refreshableWatcher)
-        refreshableWatcher.stop();
-      refreshableWatcher = new watch.Watcher({
-         watchSet: bundleResult.refreshableWatchSet,
+      if (clientWatcher)
+        clientWatcher.stop();
+      clientWatcher = new watch.Watcher({
+         watchSet: bundleResult.clientWatchSet,
          onChange: function () {
+          console.log("Client watcher changed");
           self._runFutureReturn({
             outcome: 'changed',
             refreshable: true,
@@ -561,9 +566,9 @@ _.extend(AppRunner.prototype, {
       // When ret.refreshable becomes false, we restart the server.
       var runFuture = self.runFuture = new Future;
       bundleResult = bundleApp();
+
       // Establish a watcher on the new files.
-      if (self.watchForChanges)
-        setupWatchers();
+      setupWatchers();
 
       // Notify the server that new client assets have been added to the build.
       self.serverDdpConnection.call('__meteor_update_client_assets');
@@ -576,8 +581,8 @@ _.extend(AppRunner.prototype, {
     self.proxy.setMode("hold");
     appProcess.stop();
     if (self.watchForChanges) {
-      watcher.stop();
-      refreshableWatcher.stop();
+      serverWatcher.stop();
+      clientWatcher.stop();
     }
 
     return ret;
