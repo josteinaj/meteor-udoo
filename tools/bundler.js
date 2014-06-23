@@ -591,7 +591,6 @@ _.extend(Target.prototype, {
 
     // Copy their resources into the bundle in order
     _.each(self.builds, function (build) {
-
       var isApp = ! build.pkg.name;
 
       // Emit the resources
@@ -626,18 +625,11 @@ _.extend(Target.prototype, {
 
       // Now look for the other kinds of resources.
       _.each(resources, function (resource) {
-
-      if (_.any(_.keys(build.watchSet.files), function (f) {
-        return f.indexOf(".css") != -1;
-      })) {
-      }
-
         if (resource.type === "asset")
           return;  // already handled
 
         if (_.contains(["js", "css"], resource.type)) {
-          if (resource.type === "css" && ! isBrowser) {
-            console.log("IGNORING");
+          if (resource.type === "css" && ! isBrowser)
             // XXX might be nice to throw an error here, but then we'd
             // have to make it so that package.js ignores css files
             // that appear in the server directories in an app tree
@@ -645,7 +637,6 @@ _.extend(Target.prototype, {
             // XXX XXX can't we easily do that in the css handler in
             // meteor.js?
             return;
-          }
 
           var f = new File({data: resource.data, cacheable: false});
 
@@ -698,12 +689,6 @@ _.extend(Target.prototype, {
         throw new Error("Unknown type " + resource.type);
       });
 
-      if (_.any(_.keys(build.watchSet.files), function (f) {
-        return f.indexOf(".css") != -1;
-      })) {
-        console.log(isOs);
-        console.log(_.keys(build.watchSet.files));
-      }
       // Depend on the source files that produced these resources.
       self.watchSet.merge(build.watchSet);
 
@@ -1600,10 +1585,8 @@ var writeSiteArchive = function (targets, outputPath, options) {
       }
     });
 
-    // console.log(_.keys(serverWatchSet.files));
     // We did it!
     builder.complete();
-    // console.log("serverWatchSet", serverWatchSet);
     return {
       clientWatchSet: clientWatchSet,
       serverWatchSet: serverWatchSet,
@@ -1695,7 +1678,6 @@ exports.bundle = function (options) {
     var controlProgram = null;
 
     var makeClientTarget = function (app) {
-      console.log("make client target");
       var client = new ClientTarget({
         packageLoader: packageLoader,
         arch: "browser"
@@ -1724,7 +1706,6 @@ exports.bundle = function (options) {
     };
 
     var makeServerTarget = function (app, clientTarget) {
-      console.log("make server target");
       var targetOptions = {
         packageLoader: packageLoader,
         arch: buildOptions.arch || archinfo.host(),

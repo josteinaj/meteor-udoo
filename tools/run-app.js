@@ -431,7 +431,6 @@ _.extend(AppRunner.prototype, {
       stats.recordPackages(self.appDir);
 
     var bundleApp = function () {
-      console.log("bundling");
       return bundler.bundle({
         outputPath: bundlePath,
         nodeModulesMode: "symlink",
@@ -522,30 +521,27 @@ _.extend(AppRunner.prototype, {
     // hurry to do this, since watchSet contains a snapshot of the
     // state of the world at the time of bundling, in the form of
     // hashes and lists of matching files in each directory.
-    var serverWatcher;
+    var serverWatcher = new watch.Watcher({
+      watchSet: serverWatchSet,
+      onChange: function () {
+        console.log("Server watcher changed");
+        self._runFutureReturn({
+          outcome: 'changed',
+          bundleResult: bundleResult
+        });
+      }
+    });
+
     var clientWatcher;
 
-    var setupWatchers = function () {
+    var setupClientWatcher = function () {
       // console.log("serverWatchSet", serverWatchSet);
       // console.log("clientWatchSet", bundleResult.clientWatchSet);
-      if (serverWatcher)
-        serverWatcher.stop();
-      serverWatcher = new watch.Watcher({
-        watchSet: serverWatchSet,
-        onChange: function () {
-          console.log("Server watcher changed");
-          self._runFutureReturn({
-            outcome: 'changed',
-            bundleResult: bundleResult
-          });
-        }
-      });
       if (clientWatcher)
         clientWatcher.stop();
       clientWatcher = new watch.Watcher({
          watchSet: bundleResult.clientWatchSet,
          onChange: function () {
-          console.log("Client watcher changed");
           self._runFutureReturn({
             outcome: 'changed',
             refreshable: true,
@@ -555,7 +551,7 @@ _.extend(AppRunner.prototype, {
       });
     };
     if (self.watchForChanges)
-      setupWatchers();
+      setupClientWatcher();
 
     // Wait for either the process to exit, or (if watchForChanges) a
     // source file to change. Or, for stop() to be called.
@@ -568,7 +564,7 @@ _.extend(AppRunner.prototype, {
       bundleResult = bundleApp();
 
       // Establish a watcher on the new files.
-      setupWatchers();
+      setupClientWatcher();
 
       // Notify the server that new client assets have been added to the build.
       self.serverDdpConnection.call('__meteor_update_client_assets');

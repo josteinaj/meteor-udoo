@@ -181,7 +181,7 @@ var appUrl = function (url) {
 
 var calculateClientHash = function (includeFilter) {
   var hash = crypto.createHash('sha1');
-  // hash.update(JSON.stringify(__meteor_runtime_config__), 'utf8');
+  hash.update(JSON.stringify(__meteor_runtime_config__), 'utf8');
   _.each(WebApp.clientProgram.manifest, function (resource) {
       if ((! includeFilter || includeFilter(resource.type)) &&
           (resource.where === 'client' || resource.where === 'internal')) {
@@ -626,6 +626,8 @@ var runWebAppServer = function () {
     //  - rebuildClient: if true, rebuild the clientProgram because it may
     //                   contain changes that are not present in the boilerplate
     WebAppInternals.formBoilerplate = function () {
+      console.log("forming boilerplate");
+      debugger;
       boilerplateBaseData = {
         css: [],
         js: [],

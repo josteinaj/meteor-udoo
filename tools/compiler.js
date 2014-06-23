@@ -291,7 +291,6 @@ var compileBuild = function (unipackage, inputSourceArch, packageLoader,
   // *** Assemble the list of source file handlers from the plugins
   var allHandlers = {};
   var sourceExtensions = {};  // maps source extensions to isTemplate
-  var refreshableExtensions = {};
 
   sourceExtensions['js'] = false;
   allHandlers['js'] = function (compileStep) {
@@ -322,8 +321,6 @@ var compileBuild = function (unipackage, inputSourceArch, packageLoader,
       } else {
         allHandlers[ext] = sourceHandler.handler;
         sourceExtensions[ext] = !!sourceHandler.isTemplate;
-        if (sourceHandler.isRefreshable)
-          refreshableExtensions[ext] = true;
       }
     });
   });
