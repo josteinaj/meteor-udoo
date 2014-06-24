@@ -79,9 +79,8 @@ Autoupdate._retrySubscription = function () {
         var handle = ClientVersions.find().observeChanges({
           added: function(id, doc) {
             var self = this;
-            console.log("ADDED", doc);
-            console.log(id);
             if (doc.refreshable && id !== autoupdateVersionRefreshable) {
+              // XXX chrome caches the old CSS files - find a way to remove them
               autoupdateVersionRefreshable = id;
 
               // Replace the old CSS link with the new CSS link.

@@ -524,7 +524,7 @@ _.extend(AppRunner.prototype, {
     var serverWatcher = new watch.Watcher({
       watchSet: serverWatchSet,
       onChange: function () {
-        console.log("Server watcher changed");
+        // console.log("Server watcher changed");
         self._runFutureReturn({
           outcome: 'changed',
           bundleResult: bundleResult
@@ -537,14 +537,14 @@ _.extend(AppRunner.prototype, {
     var setupClientWatcher = function () {
       // console.log("serverWatchSet", serverWatchSet);
       // console.log("clientWatchSet", bundleResult.clientWatchSet);
-      if (clientWatcher)
-        clientWatcher.stop();
+      clientWatcher && clientWatcher.stop();
+      // console.log(_.keys(bundleResult.clientWatchSet.files));
       clientWatcher = new watch.Watcher({
          watchSet: bundleResult.clientWatchSet,
          onChange: function () {
+          // console.log("changed");
           self._runFutureReturn({
-            outcome: 'changed',
-            refreshable: true,
+            outcome: 'changed-refreshable',
             bundleResult: bundleResult
           });
          }
@@ -557,7 +557,7 @@ _.extend(AppRunner.prototype, {
     // source file to change. Or, for stop() to be called.
     var ret = runFuture.wait();
 
-    while (ret.refreshable) {
+    while (ret.outcome === 'changed-refreshable') {
       // We stay in this loop as long as only refreshable assets have changed.
       // When ret.refreshable becomes false, we restart the server.
       var runFuture = self.runFuture = new Future;

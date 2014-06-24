@@ -49,13 +49,12 @@ ClientVersions = new Meteor.Collection("meteor_autoupdate_clientVersions",
 Autoupdate.autoupdateVersion = null;
 Autoupdate.autoupdateVersionRefreshable = null;
 
-var updateHashes = function (allowPreviousVersion) {
-  // Make autoupdateVersion and autoupdateVersionRefreshable
-  // available on the client.
+Meteor.startup(function () {
+  ClientVersions.remove({});
 
-  // Allow people to override Autoupdate.autoupdateVersion before
-  // startup. Tests do this.
-  if (allowPreviousVersion && Autoupdate.autoupdateVersion === null)
+  // Allow people to set Autoupdate.autoupdateVersion before startup.
+  // Tests do this.
+  if (Autoupdate.autoupdateVersion === null)
     Autoupdate.autoupdateVersion =
       __meteor_runtime_config__.autoupdateVersion =
         process.env.AUTOUPDATE_VERSION ||
@@ -67,12 +66,7 @@ var updateHashes = function (allowPreviousVersion) {
       process.env.AUTOUPDATE_VERSION ||
       process.env.SERVER_ID || // XXX COMPAT 0.6.6
       WebApp.calculateClientHashRefreshable();
-};
 
-Meteor.startup(function () {
-  ClientVersions.remove({});
-  updateHashes(true);
-  console.log("INSERTING");
   ClientVersions.insert({
     _id: Autoupdate.autoupdateVersion,
     refreshable: false,
@@ -90,13 +84,24 @@ Meteor.publish(
 
 Meteor.methods({
   __meteor_update_client_assets: function () {
-    // Step 1: load the current client program on the server and update the
-    // hash values in __meteor_runtime_config__.
-    WebAppInternals.reloadClientProgram();
-
     var oldVersion = Autoupdate.autoupdateVersion;
     var oldVersionRefreshable = Autoupdate.autoupdateVersionRefreshable;
-    updateHashes();
+
+    // Step 1: load the current client program on the server and update the
+    // hash values in __meteor_runtime_config__.
+
+    WebAppInternals.reloadClientProgram();
+    Autoupdate.autoupdateVersion =
+      __meteor_runtime_config__.autoupdateVersion =
+        process.env.AUTOUPDATE_VERSION ||
+        process.env.SERVER_ID || // XXX COMPAT 0.6.6
+        WebApp.calculateClientHashNonRefreshable();
+
+    Autoupdate.autoupdateVersionRefreshable =
+      __meteor_runtime_config__.autoupdateVersionRefreshable =
+        process.env.AUTOUPDATE_VERSION ||
+        process.env.SERVER_ID || // XXX COMPAT 0.6.6
+        WebApp.calculateClientHashRefreshable();
 
     // Step 2: form the new client boilerplate which contains the updated
     // assets and __meteor_runtime_config__.
