@@ -181,7 +181,10 @@ var appUrl = function (url) {
 
 var calculateClientHash = function (includeFilter) {
   var hash = crypto.createHash('sha1');
-  hash.update(JSON.stringify(__meteor_runtime_config__), 'utf8');
+  // Omit the old hashed client values in the new hash. These may be
+  // modified in the new boilerplate.
+  hash.update(JSON.stringify(_.omit(__meteor_runtime_config__,
+               ['autoupdateVersion', 'autoupdateVersionRefreshable']), 'utf8'));
   _.each(WebApp.clientProgram.manifest, function (resource) {
       if ((! includeFilter || includeFilter(resource.type)) &&
           (resource.where === 'client' || resource.where === 'internal')) {
@@ -212,12 +215,12 @@ var calculateClientHash = function (includeFilter) {
 
 Meteor.startup(function () {
   WebApp.clientHash = calculateClientHash();
-  WebApp.clientHashRefreshable = function () {
+  WebApp.calculateClientHashRefreshable = function () {
     return calculateClientHash(function (name) {
       return name === "css";
     });
   };
-  WebApp.clientHashNonRefreshable = function () {
+  WebApp.calculateClientHashNonRefreshable = function () {
     return calculateClientHash(function (name) {
       return name !== "css";
     });
@@ -260,7 +263,7 @@ var runWebAppServer = function () {
   var clientDir;
   var clientJson;
 
-  WebAppInternals.createClientProgram = function () {
+  WebAppInternals.reloadClientProgram = function () {
     // read the control for the client we'll be serving up
     clientJsonPath = path.join(__meteor_bootstrap__.serverDir,
                                __meteor_bootstrap__.configJson.client);
@@ -300,7 +303,7 @@ var runWebAppServer = function () {
       // was unused.
     };
   };
-  WebAppInternals.createClientProgram();
+  WebAppInternals.reloadClientProgram();
 
   if (! clientJsonPath || ! clientDir || ! clientJson)
     throw new Error("Client config file not parsed.");
@@ -625,9 +628,7 @@ var runWebAppServer = function () {
     // options:
     //  - rebuildClient: if true, rebuild the clientProgram because it may
     //                   contain changes that are not present in the boilerplate
-    WebAppInternals.formBoilerplate = function () {
-      console.log("forming boilerplate");
-      debugger;
+    WebAppInternals.generateBoilerplate = function () {
       boilerplateBaseData = {
         css: [],
         js: [],
@@ -669,9 +670,9 @@ var runWebAppServer = function () {
         kind: "MainPage",
         render: boilerplateRender
       });
-      WebApp.refreshableAssets = { css: boilerplateBaseData.css };
+      WebAppInternals.refreshableAssets = { css: boilerplateBaseData.css };
     };
-    WebAppInternals.formBoilerplate();
+    WebAppInternals.generateBoilerplate();
 
     // only start listening after all the startup code has run.
     var localPort = parseInt(process.env.PORT) || 0;

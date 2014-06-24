@@ -28,6 +28,9 @@ var autoupdateVersion = __meteor_runtime_config__.autoupdateVersion || "unknown"
 var autoupdateVersionRefreshable =
   __meteor_runtime_config__.autoupdateVersionRefreshable || "unknown";
 
+// The collection of acceptable client versions.
+ClientVersions = new Meteor.Collection("meteor_autoupdate_clientVersions");
+
 Autoupdate = {};
 
 Autoupdate.newClientAvailable = function () {
@@ -73,17 +76,13 @@ Autoupdate._retrySubscription = function () {
     },
     onReady: function () {
       if (Package.reload) {
-        Deps.autorun(function (computation) {
-          if (! ClientVersions.findOne({_id: autoupdateVersion,
-                                        refreshable: false })) {
-            computation.stop();
-            Package.reload.Reload._reload();
-          } else if (! ClientVersions.findOne({
-              _id: autoupdateVersionRefreshable,
-              refreshable: true })) {
-            var doc = ClientVersions.findOne({ refreshable: true });
-            if (doc) {
-              autoupdateVersionRefreshable = doc._id;
+        var handle = ClientVersions.find().observeChanges({
+          added: function(id, doc) {
+            var self = this;
+            console.log("ADDED", doc);
+            console.log(id);
+            if (doc.refreshable && id !== autoupdateVersionRefreshable) {
+              autoupdateVersionRefreshable = id;
 
               // Replace the old CSS link with the new CSS link.
               var oldlink = document.getElementsByTagName("link").item(0);
@@ -95,6 +94,9 @@ Autoupdate._retrySubscription = function () {
               newlink.setAttribute("href", doc.assets.css[0].url);
 
               document.getElementsByTagName("head").item(0).insertBefore(newlink);
+            } else if (! doc.refreshable && id !== autoupdateVersion) {
+              handle.stop();
+              Package.reload.Reload._reload();
             }
           }
         });

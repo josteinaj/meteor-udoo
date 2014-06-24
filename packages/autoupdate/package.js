@@ -13,5 +13,4 @@ Package.on_use(function (api) {
   api.export('Autoupdate');
   api.add_files('autoupdate_server.js', 'server');
   api.add_files('autoupdate_client.js', 'client');
-  api.add_files('autoupdate_common.js', ['client', 'server']);
 });
