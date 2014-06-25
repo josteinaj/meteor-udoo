@@ -1232,6 +1232,8 @@ main.registerCommand({
     changed: { type: Boolean },
     'force-online': { type: Boolean },
     slow: { type: Boolean },
+    'browser-stack': { type: Boolean },
+    phantomjs: { type: Boolean },
     history: { type: Number }
   },
   hidden: true
@@ -1261,11 +1263,18 @@ main.registerCommand({
     }
   }
 
+  var clients = {};
+  if (options['browser-stack'])
+    clients.browserStack = true;
+  if (options['phantomjs'])
+    clients.phantomJs = true;
+
   return selftest.runTests({
     onlyChanged: options.changed,
     offline: offline,
     includeSlowTests: options.slow,
     historyLines: options.history,
+    clients: clients,
     testRegexp: testRegexp
   });
 });

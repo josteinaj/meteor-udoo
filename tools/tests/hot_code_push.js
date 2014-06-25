@@ -7,11 +7,10 @@ var _ = require('underscore');
 var files = require('../files.js');
 
 selftest.define("css injection", function () {
+  var self = this;
+
   var s = new Sandbox({
-    clients: {
-      phantomJs: true,
-      browserStack: true
-    },
+    clients: self.clients,
   });
 
   s.createApp("myapp", "browser-test");
@@ -53,5 +52,5 @@ selftest.define("css injection", function () {
     run.match("new css: body { background-color: blue; }");
     run.stop();
   });
-  selftest.expectEqual(numClients, 2);
+  selftest.expectEqual(numClients, _.compact(_.values(self.clients)).length);
 });

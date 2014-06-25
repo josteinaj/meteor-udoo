@@ -348,13 +348,13 @@ var Sandbox = function (options) {
   }
 
   self.clients = [];
-  if (options.clients.phantomJs) {
+  if (options.clients && options.clients.phantomJs) {
     self.clients.push(new PhantomClient({
       host: 'localhost',
       port: 3000
     }));
   }
-  if (options.clients.browserStack) {
+  if (options.clients && options.clients.browserStack) {
     self.clients.push(new BrowserStackClient({
       host: 'localhost',
       port: 3000
@@ -385,6 +385,12 @@ _.extend(Sandbox.prototype, {
   // XXX
   testWithAllClients: function (f) {
     var self = this;
+
+    if (! self.clients.length)
+      console.log("running a client test with no clients. Use --browser-stack" +
+                  " and/or --phantomjs to run against clients." );
+    else
+      console.log("running test with " + self.clients.length + " client(s).");
 
     _.each(self.clients, function (client) {
       f(new Run(self.execPath, {
@@ -631,7 +637,12 @@ _.extend(PhantomClient.prototype, {
       '/bin/bash',
       ['-c',
        ("exec phantomjs --load-images=no /dev/stdin <<'END'\n" +
-        phantomScript + "END\n")]);
+        phantomScript + "END\n")], function (err, stdout, stderr) {
+          if (stderr.match(/not found/)) {
+            console.log("WARNING: phantomjs not installed. Install with " +
+                        "npm install -g phantomjs");
+          }
+    });
   },
   stop: function() {
     child_process.execFile(
@@ -642,14 +653,15 @@ _.extend(PhantomClient.prototype, {
 });
 
 // BrowserStackClient
-
 var browserStackKey = null;
 
 var BrowserStackClient = function (options) {
   var self = this;
-  self.driver = null;
 
   Client.apply(this, arguments);
+
+  self.tunnelProcess = null;
+  self.driver = null;
 };
 
 inherits(BrowserStackClient, Client);
@@ -663,8 +675,8 @@ _.extend(BrowserStackClient.prototype, {
       self._getBrowserStackKey();
 
     if (! browserStackKey)
-      throw new Error("BrowserStackKey not found. Ensure that you" +
-        " have installed your s3 credentials.");
+      throw new Error("BrowserStackKey not found. Ensure that you " +
+        "have installed your s3 credentials.");
 
     var capabilities = {
       'browserName' : 'chrome',
@@ -1273,6 +1285,9 @@ var tagDescriptions = {
 };
 
 // options: onlyChanged, offline, includeSlowTests, historyLines, testRegexp
+//          clients:
+//             - phantomJs
+//             - browserStack (need s3cmd credentials)
 var runTests = function (options) {
   var failureCount = 0;
 
@@ -1344,7 +1359,11 @@ var runTests = function (options) {
     var failure = null;
     try {
       runningTest = test;
-      test.f();
+
+      // Bind the test to the options hash so that they have access to the
+      // variables from selftest.define().
+      var boundFunc = test.f.bind(options);
+      boundFunc();
     } catch (e) {
       if (e instanceof TestFailure) {
         failure = e;
