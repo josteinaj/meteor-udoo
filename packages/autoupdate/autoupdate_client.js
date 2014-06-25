@@ -80,19 +80,24 @@ Autoupdate._retrySubscription = function () {
           added: function(id, doc) {
             var self = this;
             if (doc.refreshable && id !== autoupdateVersionRefreshable) {
-              // XXX chrome caches the old CSS files - find a way to remove them
               autoupdateVersionRefreshable = id;
 
-              // Replace the old CSS link with the new CSS link.
-              var oldlink = document.getElementsByTagName("link").item(0);
-              oldlink.parentNode.removeChild(oldlink);
+              // Remove all of the old CSS links that were added by Meteor.
+              var cssLinks = document.getElementsByClassName('__meteor-css__');
+              while (cssLinks[0]) {
+                cssLinks[0].parentNode.removeChild(cssLinks[0]);
+              }
 
-              var newlink = document.createElement("link");
-              newlink.setAttribute("rel", "stylesheet");
-              newlink.setAttribute("type", "text/css");
-              newlink.setAttribute("href", doc.assets.css[0].url);
-
-              document.getElementsByTagName("head").item(0).insertBefore(newlink);
+              // Iterate through the list of new css files and add them to head.
+              _.each(doc.assets.allCss, function (css) {
+                var newlink = document.createElement("link");
+                newlink.setAttribute("rel", "stylesheet");
+                newlink.setAttribute("class", "__meteor-css__");
+                newlink.setAttribute("href", css.url);
+                document.getElementsByTagName("head").
+                  item(0).
+                  insertBefore(newlink);
+              });
             } else if (! doc.refreshable && id !== autoupdateVersion) {
               handle.stop();
               Package.reload.Reload._reload();

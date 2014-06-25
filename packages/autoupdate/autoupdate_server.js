@@ -89,8 +89,8 @@ Meteor.methods({
 
     // Step 1: load the current client program on the server and update the
     // hash values in __meteor_runtime_config__.
-
     WebAppInternals.reloadClientProgram();
+
     Autoupdate.autoupdateVersion =
       __meteor_runtime_config__.autoupdateVersion =
         process.env.AUTOUPDATE_VERSION ||
@@ -108,7 +108,6 @@ Meteor.methods({
     WebAppInternals.generateBoilerplate();
 
     if (Autoupdate.autoupdateVersion !== oldVersion) {
-      console.log("inserting");
       ClientVersions.remove(oldVersion);
       ClientVersions.insert({
         _id: Autoupdate.autoupdateVersion,

@@ -642,7 +642,6 @@ _.extend(Target.prototype, {
 
           var relPath = stripLeadingSlash(resource.servePath);
           f.setTargetPathFromRelPath(relPath);
-
           if (isBrowser) {
             f.setUrlFromRelPath(resource.servePath);
           }
@@ -933,7 +932,6 @@ _.extend(ClientTarget.prototype, {
         manifestItem.sourceMapUrl = require('url').resolve(
           file.url, sourceMapBaseName);
       }
-
       // Set this now, in case we mutated the file's contents.
       manifestItem.size = file.size();
       manifestItem.hash = file.hash();
@@ -1147,7 +1145,6 @@ _.extend(JsImage.prototype, {
     _.each(self.jsToLoad, function (item) {
       if (! item.targetPath)
         throw new Error("No targetPath?");
-
       var loadPath = builder.writeToGeneratedFilename(
         item.targetPath,
         { data: new Buffer(item.source, 'utf8') });
@@ -1715,7 +1712,6 @@ exports.bundle = function (options) {
         targetOptions.clientTarget = clientTarget;
 
       var server = new ServerTarget(targetOptions);
-
       server.make({
         packages: [app],
         minify: false
@@ -1733,6 +1729,12 @@ exports.bundle = function (options) {
       serverWatchSet, path.join(appDir, 'no-default-targets')) === null;
 
     if (includeDefaultTargets) {
+      if (! options.firstBuild) {
+        // Refresh the package cache in case some of the package files
+        // have changed.
+        packageCache.packageCache.refresh();
+      }
+
       // Create a Unipackage object that represents the app
       var app = packageCache.packageCache.loadAppAtPath(
         appDir, exports.ignoreFiles);
@@ -1742,8 +1744,10 @@ exports.bundle = function (options) {
       targets.client = client;
 
       // Server
-      var server = makeServerTarget(app, client);
-      targets.server = server;
+      if (options.firstBuild) {
+        var server = makeServerTarget(app, client);
+        targets.server = server;
+      }
     }
 
     // Pick up any additional targets in /programs

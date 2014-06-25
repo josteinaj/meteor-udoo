@@ -512,7 +512,6 @@ var runWebAppServer = function () {
     }
 
     var htmlAttributes = getHtmlAttributes(request);
-
     var attributeKey = JSON.stringify(htmlAttributes);
     try {
       var boilerplateData = _.extend({htmlAttributes: htmlAttributes},
@@ -623,6 +622,8 @@ var runWebAppServer = function () {
     // '--keepalive' is a use of the option.
     var expectKeepalives = _.contains(argv, '--keepalive');
 
+    var boilerplateTemplateSource = Assets.getText("boilerplate.html");
+
     // Exported to allow client-side only changes to rebuild the boilerplate
     // without requiring a full server restart.
     // options:
@@ -659,7 +660,6 @@ var runWebAppServer = function () {
         }
       });
 
-      var boilerplateTemplateSource = Assets.getText("boilerplate.html");
       var boilerplateRenderCode = Spacebars.compile(
         boilerplateTemplateSource, { isBody: true });
 
@@ -670,7 +670,7 @@ var runWebAppServer = function () {
         kind: "MainPage",
         render: boilerplateRender
       });
-      WebAppInternals.refreshableAssets = { css: boilerplateBaseData.css };
+      WebAppInternals.refreshableAssets = { allCss: boilerplateBaseData.css };
     };
     WebAppInternals.generateBoilerplate();
 

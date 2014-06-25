@@ -430,14 +430,15 @@ _.extend(AppRunner.prototype, {
     if (self.recordPackageUsage)
       stats.recordPackages(self.appDir);
 
-    var bundleApp = function () {
+    var bundleApp = function (firstBuild) {
       return bundler.bundle({
         outputPath: bundlePath,
         nodeModulesMode: "symlink",
-        buildOptions: self.buildOptions
+        buildOptions: self.buildOptions,
+        firstBuild: firstBuild
       });
     };
-    var bundleResult = bundleApp();
+    var bundleResult = bundleApp(true);
 
     var serverWatchSet = bundleResult.serverWatchSet;
 
@@ -481,7 +482,7 @@ _.extend(AppRunner.prototype, {
       return { outcome: 'stopped', bundleResult: bundleResult };
     if (self.runFuture)
       throw new Error("already have future?");
-    var runFuture = self.runFuture = new Future;
+    self.runFuture = new Future;
 
     // Run the program
     var appProcess = new AppProcess({
@@ -524,7 +525,6 @@ _.extend(AppRunner.prototype, {
     var serverWatcher = new watch.Watcher({
       watchSet: serverWatchSet,
       onChange: function () {
-        // console.log("Server watcher changed");
         self._runFutureReturn({
           outcome: 'changed',
           bundleResult: bundleResult
@@ -535,16 +535,16 @@ _.extend(AppRunner.prototype, {
     var clientWatcher;
 
     var setupClientWatcher = function () {
-      // console.log("serverWatchSet", serverWatchSet);
-      // console.log("clientWatchSet", bundleResult.clientWatchSet);
       clientWatcher && clientWatcher.stop();
-      // console.log(_.keys(bundleResult.clientWatchSet.files));
       clientWatcher = new watch.Watcher({
          watchSet: bundleResult.clientWatchSet,
          onChange: function () {
-          // console.log("changed");
+          var outcome = watch.isUpToDate(serverWatchSet)
+                        ? 'changed-refreshable'
+                        : 'changed';
+
           self._runFutureReturn({
-            outcome: 'changed-refreshable',
+            outcome: outcome,
             bundleResult: bundleResult
           });
          }
@@ -555,13 +555,12 @@ _.extend(AppRunner.prototype, {
 
     // Wait for either the process to exit, or (if watchForChanges) a
     // source file to change. Or, for stop() to be called.
-    var ret = runFuture.wait();
+    var ret = self.runFuture.wait();
 
     while (ret.outcome === 'changed-refreshable') {
       // We stay in this loop as long as only refreshable assets have changed.
       // When ret.refreshable becomes false, we restart the server.
-      var runFuture = self.runFuture = new Future;
-      bundleResult = bundleApp();
+      bundleResult = bundleApp(false);
 
       // Establish a watcher on the new files.
       setupClientWatcher();
@@ -569,9 +568,9 @@ _.extend(AppRunner.prototype, {
       // Notify the server that new client assets have been added to the build.
       self.serverDdpConnection.call('__meteor_update_client_assets');
 
-      ret = runFuture.wait();
+      self.runFuture = new Future;
+      ret = self.runFuture.wait();
     }
-
     self.runFuture = null;
 
     self.proxy.setMode("hold");

@@ -378,6 +378,7 @@ var compileBuild = function (unipackage, inputSourceArch, packageLoader,
     var file = watch.readAndWatchFileWithHash(sourceWatchSet, absPath);
     var contents = file.contents;
 
+
     sources.push(relPath);
 
     if (contents === null) {
