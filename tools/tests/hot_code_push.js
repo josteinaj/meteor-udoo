@@ -1,6 +1,5 @@
 var selftest = require('../selftest.js');
 var Sandbox = selftest.Sandbox;
-var PhantomClient = selftest.PhantomClient;
 var utils = require('../utils.js');
 var Future = require('fibers/future');
 var net = require('net');
@@ -15,7 +14,6 @@ selftest.define("css injection", function () {
     },
   });
 
-  // Starting a run
   s.createApp("myapp", "browser-test");
   s.cd("myapp");
 
@@ -40,9 +38,9 @@ selftest.define("css injection", function () {
     run.match("numCssChanges: 0");
     run.match("new css:");
 
-    // The num changes variable is set to 0 on a client refresh.
+    // 'numCssChanges' variable is set to 0 on a client refresh.
     // Since CSS changes should not trigger a client refresh, numCssChanges
-    // variable should not reset.
+    // should never reset.
 
     // XXX change test expectations when CSS injection patch lands.
     s.write("test.css", "body { background-color: red; }");
