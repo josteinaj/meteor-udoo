@@ -8,6 +8,9 @@ var release = require('./release.js');
 var catalog = require('./catalog.js');
 var archinfo = require('./archinfo.js');
 var Future = require('fibers/future');
+var child_process = require('child_process');
+var AWS = require('aws-sdk');
+var webdriver = require('browserstack-webdriver');
 
 // Exception representing a test failure
 var TestFailure = function (reason, details) {
@@ -53,6 +56,21 @@ var expectThrows = markStack(function (f) {
   if (! threw)
     throw new TestFailure("expected-exception")
 });
+
+// http://davidshariff.com/blog/javascript-inheritance-patterns/
+var inherits = function (child, parent) {
+  var tmp = function () {};
+  tmp.prototype = parent.prototype;
+  child.prototype = new tmp;
+  child.prototype.constructor = child;
+};
+
+var execFileSync = function (binary, args) {
+  return Future.wrap(function(cb) {
+    var cb2 = function(err, stdout, stderr) { cb(err, stdout); };
+    child_process.execFile(binary, args, cb2);
+  })().wait();
+};
 
 ///////////////////////////////////////////////////////////////////////////////
 // Matcher
@@ -329,6 +347,20 @@ var Sandbox = function (options) {
     self._makeWarehouse(options.warehouse);
   }
 
+  self.clients = [];
+  if (options.clients.phantomJs) {
+    self.clients.push(new PhantomClient({
+      host: 'localhost',
+      port: 3000
+    }));
+  }
+  if (options.clients.browserStack) {
+    self.clients.push(new BrowserStackClient({
+      host: 'localhost',
+      port: 3000
+    }));
+  }
+
   // Figure out the 'meteor' to run
   if (self.warehouse)
     self.execPath = path.join(self.warehouse, 'meteor');
@@ -341,28 +373,28 @@ _.extend(Sandbox.prototype, {
   run: function (/* arguments */) {
     var self = this;
 
-    var env = _.clone(self.env);
-    env.METEOR_SESSION_FILE = path.join(self.root, '.meteorsession');
-
-    if (self.warehouse) {
-      // Tell it where the warehouse lives.
-      env.METEOR_WAREHOUSE_DIR = self.warehouse;
-      // Don't ever try to refresh the stub catalog we made.
-      env.METEOR_OFFLINE_CATALOG = "t";
-    }
-
-    // By default (ie, with no mock warehouse and no --release arg) we should be
-    // testing the actual release this is built in, so we pretend that it is the
-    // latest release.
-    if (!self.warehouse && release.current.isProperRelease())
-      env.METEOR_TEST_LATEST_RELEASE = release.current.name;
-
     return new Run(self.execPath, {
       sandbox: self,
       args: _.toArray(arguments),
       cwd: self.cwd,
-      env: env,
+      env: self._makeEnv(),
       fakeMongo: self.fakeMongo
+    });
+  },
+
+  // XXX
+  testWithAllClients: function (f) {
+    var self = this;
+
+    _.each(self.clients, function (client) {
+      f(new Run(self.execPath, {
+        sandbox: self,
+        args: [],
+        cwd: self.cwd,
+        env: self._makeEnv(),
+        fakeMongo: self.fakeMongo,
+        client: client
+      }));
     });
   },
 
@@ -463,6 +495,26 @@ _.extend(Sandbox.prototype, {
                             contents, 'utf8');
   },
 
+  _makeEnv: function () {
+    var self = this;
+    var env = _.clone(self.env);
+    env.METEOR_SESSION_FILE = path.join(self.root, '.meteorsession');
+
+    if (self.warehouse) {
+      // Tell it where the warehouse lives.
+      env.METEOR_WAREHOUSE_DIR = self.warehouse;
+      // Don't ever try to refresh the stub catalog we made.
+      env.METEOR_OFFLINE_CATALOG = "t";
+    }
+
+    // By default (ie, with no mock warehouse and no --release arg) we should be
+    // testing the actual release this is built in, so we pretend that it is the
+    // latest release.
+    if (!self.warehouse && release.current.isProperRelease())
+      env.METEOR_TEST_LATEST_RELEASE = release.current.name;
+    return env;
+  },
+
   // Writes a stub warehouse (really a tropohouse) to the directory
   // self.warehouse. This warehouse only contains a meteor-tool package and some
   // releases containing that tool only (and no packages).
@@ -547,6 +599,160 @@ _.extend(Sandbox.prototype, {
   }
 });
 
+///////////////////////////////////////////////////////////////////////////////
+// Client
+///////////////////////////////////////////////////////////////////////////////
+
+var Client = function (options) {
+  var self = this;
+
+  self.host = options.host;
+  self.port = options.port;
+  self.path = "http://" + self.host + ":" + self.port;
+
+  if (! self.connect || ! self.stop) {
+    console.log("Missing methods in subclass of Client.");
+  }
+};
+
+// PhantomClient
+var PhantomClient = function (options) {
+  Client.apply(this, arguments);
+};
+
+inherits(PhantomClient, Client);
+
+_.extend(PhantomClient.prototype, {
+  connect: function () {
+    var self = this;
+
+    var phantomScript = "require('webpage').create().open('" + self.path + "');";
+    child_process.execFile(
+      '/bin/bash',
+      ['-c',
+       ("exec phantomjs --load-images=no /dev/stdin <<'END'\n" +
+        phantomScript + "END\n")]);
+  },
+  stop: function() {
+    child_process.execFile(
+      '/bin/bash',
+      ['-c',
+       ("exec pkill -f phantomjs")]);
+  }
+});
+
+// BrowserStackClient
+
+var browserStackKey = null;
+
+var BrowserStackClient = function (options) {
+  var self = this;
+  self.driver = null;
+
+  Client.apply(this, arguments);
+};
+
+inherits(BrowserStackClient, Client);
+
+_.extend(BrowserStackClient.prototype, {
+  connect: function () {
+    var self = this;
+
+    // memoize the key
+    if (browserStackKey === null)
+      self._getBrowserStackKey();
+
+    if (! browserStackKey)
+      throw new Error("BrowserStackKey not found. Ensure that you" +
+        " have installed your s3 credentials.");
+
+    var capabilities = {
+      'browserName' : 'chrome',
+      'browserstack.user' : 'meteor',
+      'browserstack.local' : 'true',
+      'browserstack.key' : browserStackKey
+    };
+
+    self._launchBrowserStackTunnel(function (error) {
+      if (error)
+        throw error;
+
+      self.driver = new webdriver.Builder().
+        usingServer('http://hub.browserstack.com/wd/hub').
+        withCapabilities(capabilities).
+        build();
+      self.driver.get(self.path);
+    });
+  },
+
+  stop: function() {
+    var self = this;
+    self.driver && self.driver.quit();
+  },
+
+  _getBrowserStackKey: function () {
+    var configureS3 = function () {
+      // calls 's3cmd --dump-config', returns {accessKey: ..., secretKey: ...}
+      var getS3Credentials = function () {
+        var unparsedConfig = execFileSync("s3cmd", ["--dump-config"]);
+        var accessKey = /access_key = (.*)/.exec(unparsedConfig)[1];
+        var secretKey = /secret_key = (.*)/.exec(unparsedConfig)[1];
+        return {accessKey: accessKey, secretKey: secretKey};
+      };
+
+      var s3Credentials = getS3Credentials();
+      var s3 = new AWS.S3({
+        accessKeyId: s3Credentials.accessKey,
+        secretAccessKey: s3Credentials.secretKey,
+        region: 'us-east-1'
+      });
+
+      return s3;
+    };
+    var s3 = configureS3();
+    var params = { Bucket: 'meteor-browserstack-keys',
+                   Key: 'browserstack-key' };
+    var fut = new Future();
+    s3.getObject(params, function (err, data) {
+      browserStackKey = data.Body.toString().trim();
+      fut['return']();
+    });
+    fut.wait();
+  },
+
+  _launchBrowserStackTunnel: function (callback) {
+    var self = this;
+    var callbackInvoked = false;
+
+    var args = [
+      browserStackKey,
+      [self.host, self.port, 0].join(','),
+      // Disable Live Testing and Screenshots, just test with Automate.
+      '-onlyAutomate',
+      // Do not wait for the server to be ready to spawn the process.
+      '-skipCheck'
+    ];
+
+    self.tunnelProcess = child_process.spawn(
+      "BrowserStackLocal",
+      args, {
+        cwd: path.join(__dirname, '..')
+      }
+    );
+
+    // Called when the SSH tunnel is established.
+    self.tunnelProcess.stdout.on('data', function(data) {
+      if (data.toString().match(/You can now access your local server/))
+        callback();
+    });
+
+    // If the tunnel exits for any reason before the stopTunnel() method is
+    // called than that is an error condition.
+    self.tunnelProcess.on('exit', function (code) {
+      callback(new Error('SSH tunnel exited unexpectedly with code: ' + code));
+    });
+  }
+});
 
 // Build a tools release into a temporary directory (based on the
 // current checkout), and gives it a version name of
@@ -635,6 +841,7 @@ var Run = function (execPath, options) {
   self.proc = null;
   self.baseTimeout = 2;
   self.extraTime = 0;
+  self.client = options.client;
 
   self.stdoutMatcher = new Matcher(self);
   self.stderrMatcher = new Matcher(self);
@@ -684,11 +891,22 @@ _.extend(Run.prototype, {
     });
   },
 
+  connectClient: function () {
+    var self = this;
+    if (! self.client)
+      throw new Error("Must create Run with a client to use connectClient().");
+
+    self._ensureStarted();
+    self.client.connect();
+  },
+
   _exited: function (status) {
     var self = this;
 
     if (self.exitStatus !== undefined)
       throw new Error("already exited?");
+
+    self.client && self.client.stop();
 
     self.exitStatus = status;
     var exitFutures = self.exitFutures;
@@ -864,6 +1082,7 @@ _.extend(Run.prototype, {
   stop: markStack(function () {
     var self = this;
     if (self.exitStatus === undefined) {
+      self.client && self.client.stop();
       self.proc.kill();
       self.expectExit();
     }
