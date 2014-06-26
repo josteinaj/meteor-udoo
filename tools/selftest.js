@@ -718,7 +718,7 @@ _.extend(BrowserStackClient.prototype, {
     var outputDir = path.join(tempDir, "key");
 
     try {
-      execFileSync("boogle", ["get",
+      execFileSync("s3cmd", ["get",
         "s3://meteor-browserstack-keys/browserstack-key",
         outputDir
       ]);
