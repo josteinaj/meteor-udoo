@@ -3,11 +3,11 @@
 Meteor is an ultra-simple environment for building modern web
 applications.
 
-This project aims to get Meteor running on UDOO.
+This project aims to get Meteor running on UDOO, including the node.js package node-udoo.
 
-Read more about Meteor on [Meteors GitHub project page](http://github.com/meteor/meteor/).
+Read more about Meteor on [Meteors GitHub project page](http://github.com/meteor/meteor/), and about node-udoo on the [node-udoo GitHub project page](https://github.com/pilwon/node-udoo).
 
-## Installation (WIP!)
+## Step 1: Setting up the environment
 
  1. [Download and install Debian Wheezy armHF](http://www.udoo.org/downloads/)
  2. Configure WiFi so that it gets connected automatically
@@ -20,9 +20,13 @@ Read more about Meteor on [Meteors GitHub project page](http://github.com/meteor
  9. `sudo apt-get update && sudo apt-get upgrade`
  10. `sudo apt-get install mongodb mongodb-server mongodb-clients mongodb-dev`
  11. `sudo apt-get install nodejs npm`
- 12. `sudo apt-get install git`
- 13. `cd ~ && git clone https://github.com/josteinaj/meteor.git`
- 
-TODO:
-* building meteor without dependencies (using apt-get node+mongo)
-* installing udoo npm
+ 12. `sudo ln --symbolic /usr/bin/nodejs /usr/bin/node` Node.JS is installed as "nodejs" instead of the more common "node" for some reason.
+
+## Step 2: Building Meteor from source
+
+ 13. `sudo apt-get install git`
+ 14. `cd ~ && git clone https://github.com/josteinaj/meteor-udoo.git`
+ 15. `cd ~/meteor-udoo && ./scripts/generate-dev-bundle.sh without-dependencies`
+
+ * TODO: installing meteor
+ * TODO: installing udoo npm
