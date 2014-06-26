@@ -50,8 +50,6 @@ Autoupdate.autoupdateVersion = null;
 Autoupdate.autoupdateVersionRefreshable = null;
 
 Meteor.startup(function () {
-  ClientVersions.remove({});
-
   // Allow people to override Autoupdate.autoupdateVersion before
   // startup. Tests do this.
   if (Autoupdate.autoupdateVersion === null)
