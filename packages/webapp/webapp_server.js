@@ -270,43 +270,45 @@ var runWebAppServer = function () {
   var clientJson;
 
   WebAppInternals.reloadClientProgram = function () {
-    // read the control for the client we'll be serving up
-    clientJsonPath = path.join(__meteor_bootstrap__.serverDir,
-                               __meteor_bootstrap__.configJson.client);
-    clientDir = path.dirname(clientJsonPath);
-    clientJson = JSON.parse(readUtf8FileSync(clientJsonPath));
-    if (clientJson.format !== "browser-program-pre1")
-      throw new Error("Unsupported format for client assets: " +
-                      JSON.stringify(clientJson.format));
+    syncQueue.runTask(function() {
+      // read the control for the client we'll be serving up
+      clientJsonPath = path.join(__meteor_bootstrap__.serverDir,
+                                 __meteor_bootstrap__.configJson.client);
+      clientDir = path.dirname(clientJsonPath);
+      clientJson = JSON.parse(readUtf8FileSync(clientJsonPath));
+      if (clientJson.format !== "browser-program-pre1")
+        throw new Error("Unsupported format for client assets: " +
+                        JSON.stringify(clientJson.format));
 
-    staticFiles = {};
-    _.each(clientJson.manifest, function (item) {
-      if (item.url && item.where === "client") {
-        staticFiles[getItemPathname(item.url)] = {
-          path: item.path,
-          cacheable: item.cacheable,
-          // Link from source to its map
-          sourceMapUrl: item.sourceMapUrl,
-          type: item.type
-        };
-
-        if (item.sourceMap) {
-          // Serve the source map too, under the specified URL. We assume all
-          // source maps are cacheable.
-          staticFiles[getItemPathname(item.sourceMapUrl)] = {
-            path: item.sourceMap,
-            cacheable: true
+      staticFiles = {};
+      _.each(clientJson.manifest, function (item) {
+        if (item.url && item.where === "client") {
+          staticFiles[getItemPathname(item.url)] = {
+            path: item.path,
+            cacheable: item.cacheable,
+            // Link from source to its map
+            sourceMapUrl: item.sourceMapUrl,
+            type: item.type
           };
+
+          if (item.sourceMap) {
+            // Serve the source map too, under the specified URL. We assume all
+            // source maps are cacheable.
+            staticFiles[getItemPathname(item.sourceMapUrl)] = {
+              path: item.sourceMap,
+              cacheable: true
+            };
+          }
         }
-      }
+      });
+      // Exported for tests.
+      WebAppInternals.staticFiles = staticFiles;
+      WebApp.clientProgram = {
+        manifest: clientJson.manifest
+        // XXX do we need a "root: clientDir" field here? it used to be here but
+        // was unused.
+      };
     });
-    // Exported for tests.
-    WebAppInternals.staticFiles = staticFiles;
-    WebApp.clientProgram = {
-      manifest: clientJson.manifest
-      // XXX do we need a "root: clientDir" field here? it used to be here but
-      // was unused.
-    };
   };
   WebAppInternals.reloadClientProgram();
 
