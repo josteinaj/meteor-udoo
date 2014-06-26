@@ -15,17 +15,7 @@ var catalog = require('./catalog.js');
 var packageCache = require('./package-cache.js');
 var PackageLoader = require('./package-loader.js').PackageLoader;
 var stats = require('./stats.js');
-
-var uniload = require('./uniload.js');
-var fiberHelpers = require('./fiber-helpers.js');
-var httpHelpers = require('./http-helpers.js');
-var config = require('./config.js');
-var getLoadedPackages = _.once(function () {
-  var uniload = require('./uniload.js');
-  return uniload.load({
-    packages: [ 'meteor', 'livedata']
-  });
-});
+var child_process = require('child_process');
 
 // Parse out s as if it were a bash command line.
 var bashParse = function (s) {
@@ -214,8 +204,6 @@ _.extend(AppProcess.prototype, {
   _spawn: function () {
     var self = this;
 
-    var child_process = require('child_process');
-
     if (! self.program) {
       // Old-style bundle
       var opts = _.clone(self.nodeOptions);
@@ -354,7 +342,6 @@ var AppRunner = function (appDir, options) {
   self.runFuture = null;
   self.exitFuture = null;
   self.watchFuture = null;
-  self.serverDdpConnection = null;
 };
 
 _.extend(AppRunner.prototype, {
@@ -431,15 +418,24 @@ _.extend(AppRunner.prototype, {
       stats.recordPackages(self.appDir);
 
     var bundleApp = function (firstBuild) {
-      return bundler.bundle({
+      var bundle = bundler.bundle({
         outputPath: bundlePath,
         nodeModulesMode: "symlink",
         buildOptions: self.buildOptions,
         firstBuild: firstBuild
       });
-    };
-    var bundleResult = bundleApp(true);
 
+      // Were there errors?
+      if (bundle.errors) {
+        return {
+          outcome: 'bundle-fail',
+          bundleResult: bundle
+        };
+      }
+      return bundle;
+    };
+
+    var bundleResult = bundleApp(true);
     var serverWatchSet = bundleResult.serverWatchSet;
 
     // Read the settings file, if any
@@ -467,14 +463,6 @@ _.extend(AppRunner.prototype, {
     // HACK: Also make sure we notice when somebody adds a package to
     // the app packages dir that may override a catalog package.
     catalog.complete.watchLocalPackageDirs(serverWatchSet);
-
-    // Were there errors?
-    if (bundleResult.errors) {
-      return {
-        outcome: 'bundle-fail',
-        bundleResult: bundleResult
-      };
-    }
 
     // Atomically (1) see if we've been stop()'d, (2) if not, create a
     // future that can be used to stop() us once we start running.
@@ -511,12 +499,6 @@ _.extend(AppRunner.prototype, {
       settings: settings
     });
     appProcess.start();
-
-    var DDP = getLoadedPackages().livedata.DDP;
-    self.serverDdpConnection = DDP.connect(
-      getLoadedPackages().meteor.Meteor.absoluteUrl({rootUrl: self.rootUrl}), {
-        headers: { 'User-Agent': httpHelpers.getUserAgent() }
-    });
 
     // Start watching for changes for files if requested. There's no
     // hurry to do this, since watchSet contains a snapshot of the
@@ -566,7 +548,8 @@ _.extend(AppRunner.prototype, {
       setupClientWatcher();
 
       // Notify the server that new client assets have been added to the build.
-      self.serverDdpConnection.call('__meteor_update_client_assets');
+      child_process.execFile('/bin/bash',
+        ['-c', ("kill -SIGUSR2 " + appProcess.proc.pid)]);
 
       self.runFuture = new Future;
       ret = self.runFuture.wait();
@@ -575,10 +558,9 @@ _.extend(AppRunner.prototype, {
 
     self.proxy.setMode("hold");
     appProcess.stop();
-    if (self.watchForChanges) {
-      serverWatcher.stop();
-      clientWatcher.stop();
-    }
+
+    serverWatcher && serverWatcher.stop();
+    clientWatcher && clientWatcher.stop();
 
     return ret;
   },

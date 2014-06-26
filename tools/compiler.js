@@ -374,10 +374,12 @@ var compileBuild = function (unipackage, inputSourceArch, packageLoader,
     var absPath = path.resolve(inputSourceArch.pkg.sourceRoot, relPath);
     var filename = path.basename(relPath);
     var sourceWatchSet = new watch.WatchSet();
-    var sourceIsWatched = false;
     var file = watch.readAndWatchFileWithHash(sourceWatchSet, absPath);
     var contents = file.contents;
 
+    // Only add the source file to the WatchSet if it's actually added to
+    // the build.
+    var sourceIsWatched = false;
 
     sources.push(relPath);
 

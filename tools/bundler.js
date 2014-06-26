@@ -642,6 +642,7 @@ _.extend(Target.prototype, {
 
           var relPath = stripLeadingSlash(resource.servePath);
           f.setTargetPathFromRelPath(relPath);
+
           if (isBrowser) {
             f.setUrlFromRelPath(resource.servePath);
           }
@@ -932,6 +933,7 @@ _.extend(ClientTarget.prototype, {
         manifestItem.sourceMapUrl = require('url').resolve(
           file.url, sourceMapBaseName);
       }
+
       // Set this now, in case we mutated the file's contents.
       manifestItem.size = file.size();
       manifestItem.hash = file.hash();
@@ -1145,6 +1147,7 @@ _.extend(JsImage.prototype, {
     _.each(self.jsToLoad, function (item) {
       if (! item.targetPath)
         throw new Error("No targetPath?");
+
       var loadPath = builder.writeToGeneratedFilename(
         item.targetPath,
         { data: new Buffer(item.source, 'utf8') });
@@ -1575,10 +1578,10 @@ var writeSiteArchive = function (targets, outputPath, options) {
     var serverWatchSet = new watch.WatchSet();
     var dependencySources = [builder].concat(_.values(targets));
     _.each(dependencySources, function (s) {
-      if (s instanceof ServerTarget) {
-        serverWatchSet.merge(s.getWatchSet());
-      } else {
+      if (s instanceof ClientTarget) {
         clientWatchSet.merge(s.getWatchSet());
+      } else {
+        serverWatchSet.merge(s.getWatchSet());
       }
     });
 
@@ -1712,6 +1715,7 @@ exports.bundle = function (options) {
         targetOptions.clientTarget = clientTarget;
 
       var server = new ServerTarget(targetOptions);
+
       server.make({
         packages: [app],
         minify: false
@@ -1756,7 +1760,7 @@ exports.bundle = function (options) {
     var programs = [];
     var programsDir = project.project.getProgramsDirectory();
     var programsSubdirs = project.project.getProgramsSubdirs({
-      serverWatchSet: serverWatchSet
+      watchSet: serverWatchSet
     });
 
     _.each(programsSubdirs, function (item) {

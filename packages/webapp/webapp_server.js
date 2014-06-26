@@ -11,6 +11,8 @@ var connect = Npm.require('connect');
 var useragent = Npm.require('useragent');
 var send = Npm.require('send');
 
+var Future = Npm.require('fibers/future');
+
 var SHORT_SOCKET_TIMEOUT = 5*1000;
 var LONG_SOCKET_TIMEOUT = 120*1000;
 
@@ -60,6 +62,10 @@ var sha1 = function (contents) {
   var hash = crypto.createHash('sha1');
   hash.update(contents);
   return hash.digest('hex');
+};
+
+var readUtf8FileSync = function (filename) {
+  return Future.wrap(fs.readFile)(filename, 'utf8').wait();
 };
 
 // #BrowserIdentification
@@ -251,7 +257,7 @@ WebApp._timeoutAdjustmentRequestCallback = function (req, res) {
 
 var runWebAppServer = function () {
   var shuttingDown = false;
-
+  var syncQueue = new Meteor._SynchronousQueue();
 
   var getItemPathname = function (itemUrl) {
     return decodeURIComponent(url.parse(itemUrl).pathname);
@@ -268,8 +274,7 @@ var runWebAppServer = function () {
     clientJsonPath = path.join(__meteor_bootstrap__.serverDir,
                                __meteor_bootstrap__.configJson.client);
     clientDir = path.dirname(clientJsonPath);
-    clientJson = JSON.parse(fs.readFileSync(clientJsonPath, 'utf8'));
-
+    clientJson = JSON.parse(readUtf8FileSync(clientJsonPath));
     if (clientJson.format !== "browser-program-pre1")
       throw new Error("Unsupported format for client assets: " +
                       JSON.stringify(clientJson.format));
@@ -626,51 +631,50 @@ var runWebAppServer = function () {
 
     // Exported to allow client-side only changes to rebuild the boilerplate
     // without requiring a full server restart.
-    // options:
-    //  - rebuildClient: if true, rebuild the clientProgram because it may
-    //                   contain changes that are not present in the boilerplate
     WebAppInternals.generateBoilerplate = function () {
-      boilerplateBaseData = {
-        css: [],
-        js: [],
-        head: '',
-        body: '',
-        inlineScriptsAllowed: WebAppInternals.inlineScriptsAllowed(),
-        meteorRuntimeConfig: JSON.stringify(__meteor_runtime_config__),
-        reloadSafetyBelt: RELOAD_SAFETYBELT,
-        rootUrlPathPrefix: __meteor_runtime_config__.ROOT_URL_PATH_PREFIX || '',
-        bundledJsCssPrefix: bundledJsCssPrefix ||
-          __meteor_runtime_config__.ROOT_URL_PATH_PREFIX || ''
-      };
+      syncQueue.runTask(function() {
+        boilerplateBaseData = {
+          css: [],
+          js: [],
+          head: '',
+          body: '',
+          inlineScriptsAllowed: WebAppInternals.inlineScriptsAllowed(),
+          meteorRuntimeConfig: JSON.stringify(__meteor_runtime_config__),
+          reloadSafetyBelt: RELOAD_SAFETYBELT,
+          rootUrlPathPrefix: __meteor_runtime_config__.ROOT_URL_PATH_PREFIX || '',
+          bundledJsCssPrefix: bundledJsCssPrefix ||
+            __meteor_runtime_config__.ROOT_URL_PATH_PREFIX || ''
+        };
 
-      _.each(WebApp.clientProgram.manifest, function (item) {
-        if (item.type === 'css' && item.where === 'client') {
-          boilerplateBaseData.css.push({url: item.url});
-        }
-        if (item.type === 'js' && item.where === 'client') {
-          boilerplateBaseData.js.push({url: item.url});
-        }
-        if (item.type === 'head') {
-          boilerplateBaseData.head = fs.readFileSync(
-            path.join(clientDir, item.path), 'utf8');
-        }
-        if (item.type === 'body') {
-          boilerplateBaseData.body = fs.readFileSync(
-            path.join(clientDir, item.path), 'utf8');
-        }
+        _.each(WebApp.clientProgram.manifest, function (item) {
+          if (item.type === 'css' && item.where === 'client') {
+            boilerplateBaseData.css.push({url: item.url});
+          }
+          if (item.type === 'js' && item.where === 'client') {
+            boilerplateBaseData.js.push({url: item.url});
+          }
+          if (item.type === 'head') {
+            boilerplateBaseData.head =
+              readUtf8FileSync(path.join(clientDir, item.path));
+          }
+          if (item.type === 'body') {
+            boilerplateBaseData.body =
+              readUtf8FileSync(path.join(clientDir, item.path));
+          }
+        });
+
+        var boilerplateRenderCode = Spacebars.compile(
+          boilerplateTemplateSource, { isBody: true });
+
+        // Note that we are actually depending on eval's local environment capture
+        // so that UI and HTML are visible to the eval'd code.
+        var boilerplateRender = eval(boilerplateRenderCode);
+        boilerplateTemplate = UI.Component.extend({
+          kind: "MainPage",
+          render: boilerplateRender
+        });
+        WebAppInternals.refreshableAssets = { allCss: boilerplateBaseData.css };
       });
-
-      var boilerplateRenderCode = Spacebars.compile(
-        boilerplateTemplateSource, { isBody: true });
-
-      // Note that we are actually depending on eval's local environment capture
-      // so that UI and HTML are visible to the eval'd code.
-      var boilerplateRender = eval(boilerplateRenderCode);
-      boilerplateTemplate = UI.Component.extend({
-        kind: "MainPage",
-        render: boilerplateRender
-      });
-      WebAppInternals.refreshableAssets = { allCss: boilerplateBaseData.css };
     };
     WebAppInternals.generateBoilerplate();
 
