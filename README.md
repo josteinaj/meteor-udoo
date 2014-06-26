@@ -22,11 +22,12 @@ Read more about Meteor on [Meteors GitHub project page](http://github.com/meteor
  11. `sudo apt-get install nodejs npm`
  12. `sudo ln --symbolic /usr/bin/nodejs /usr/bin/node` Node.JS is installed as "nodejs" instead of the more common "node" for some reason.
 
-## Step 2: Building Meteor from source
+## Step 2: Building Meteor
 
  13. `sudo apt-get install git`
  14. `cd ~ && git clone https://github.com/josteinaj/meteor-udoo.git`
  15. `cd ~/meteor-udoo && ./scripts/generate-dev-bundle.sh without-dependencies`
+ 16. ``sudo ln --symbolic ~/meteor-udoo/meteor /usr/bin/meteor``
+ 17. Now you should be able to use the `meteor` command to your hearts content!
 
- * TODO: installing meteor
  * TODO: installing udoo npm
