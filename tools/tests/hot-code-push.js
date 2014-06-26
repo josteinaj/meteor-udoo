@@ -6,14 +6,12 @@ var net = require('net');
 var _ = require('underscore');
 var files = require('../files.js');
 
-selftest.define("css injection", function () {
-  var self = this;
-
+selftest.define("css injection", function (options) {
   var s = new Sandbox({
-    clients: self.clients,
+    clients: options.clients,
   });
 
-  s.createApp("myapp", "browser-test");
+  s.createApp("myapp", "css-injection-test");
   s.cd("myapp");
 
   var numClients = 0;
@@ -52,5 +50,5 @@ selftest.define("css injection", function () {
     run.match("new css: body { background-color: blue; }");
     run.stop();
   });
-  selftest.expectEqual(numClients, _.compact(_.values(self.clients)).length);
+  selftest.expectEqual(numClients, _.compact(_.values(options.clients)).length);
 });

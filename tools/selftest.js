@@ -9,7 +9,6 @@ var catalog = require('./catalog.js');
 var archinfo = require('./archinfo.js');
 var Future = require('fibers/future');
 var child_process = require('child_process');
-var AWS = require('aws-sdk');
 var webdriver = require('browserstack-webdriver');
 
 // Exception representing a test failure
@@ -65,6 +64,7 @@ var inherits = function (child, parent) {
   child.prototype.constructor = child;
 };
 
+// Execute a command synchronously, discarding stderr.
 var execFileSync = function (binary, args) {
   return Future.wrap(function(cb) {
     var cb2 = function(err, stdout, stderr) { cb(err, stdout); };
@@ -348,13 +348,13 @@ var Sandbox = function (options) {
   }
 
   self.clients = [];
-  if (options.clients && options.clients.phantomJs) {
+  if (options.clients && options.clients.phantomjs) {
     self.clients.push(new PhantomClient({
       host: 'localhost',
       port: 3000
     }));
   }
-  if (options.clients && options.clients.browserStack) {
+  if (options.clients && options.clients.browserstack) {
     self.clients.push(new BrowserStackClient({
       host: 'localhost',
       port: 3000
@@ -382,12 +382,19 @@ _.extend(Sandbox.prototype, {
     });
   },
 
-  // XXX
+  // Tests a set of clients with the argument function. Each call to f(run)
+  // instantiates a Run with a different client.
+  // Use:
+  // sandbox.testWithAllClients(function (run) {
+  //   // pre-connection checks
+  //   run.connectClient();
+  //   // post-connection checks
+  // });
   testWithAllClients: function (f) {
     var self = this;
 
     if (! self.clients.length)
-      console.log("running a client test with no clients. Use --browser-stack" +
+      console.log("running a client test with no clients. Use --browserstack" +
                   " and/or --phantomjs to run against clients." );
     else
       console.log("running test with " + self.clients.length + " client(s).");
@@ -614,7 +621,7 @@ var Client = function (options) {
 
   self.host = options.host;
   self.port = options.port;
-  self.path = "http://" + self.host + ":" + self.port;
+  self.url = "http://" + self.host + ":" + self.port;
 
   if (! self.connect || ! self.stop) {
     console.log("Missing methods in subclass of Client.");
@@ -623,7 +630,10 @@ var Client = function (options) {
 
 // PhantomClient
 var PhantomClient = function (options) {
+  var self = this;
   Client.apply(this, arguments);
+
+  self.process = null;
 };
 
 inherits(PhantomClient, Client);
@@ -632,23 +642,22 @@ _.extend(PhantomClient.prototype, {
   connect: function () {
     var self = this;
 
-    var phantomScript = "require('webpage').create().open('" + self.path + "');";
-    child_process.execFile(
+    var phantomScript = "require('webpage').create().open('" + self.url + "');";
+    self.process = child_process.execFile(
       '/bin/bash',
       ['-c',
        ("exec phantomjs --load-images=no /dev/stdin <<'END'\n" +
         phantomScript + "END\n")], function (err, stdout, stderr) {
           if (stderr.match(/not found/)) {
-            console.log("WARNING: phantomjs not installed. Install with " +
+            console.log("ERROR: phantomjs not installed. Install with " +
                         "npm install -g phantomjs");
           }
     });
   },
   stop: function() {
-    child_process.execFile(
-      '/bin/bash',
-      ['-c',
-       ("exec pkill -f phantomjs")]);
+    var self = this;
+    self.process && self.process.kill();
+    self.process = null;
   }
 });
 
@@ -657,7 +666,6 @@ var browserStackKey = null;
 
 var BrowserStackClient = function (options) {
   var self = this;
-
   Client.apply(this, arguments);
 
   self.tunnelProcess = null;
@@ -672,11 +680,10 @@ _.extend(BrowserStackClient.prototype, {
 
     // memoize the key
     if (browserStackKey === null)
-      self._getBrowserStackKey();
-
+      browserStackKey = self._getBrowserStackKey();
     if (! browserStackKey)
-      throw new Error("BrowserStackKey not found. Ensure that you " +
-        "have installed your s3 credentials.");
+      throw new Error("BrowserStack key not found. Ensure that you " +
+        "have installed your S3 credentials.");
 
     var capabilities = {
       'browserName' : 'chrome',
@@ -693,43 +700,33 @@ _.extend(BrowserStackClient.prototype, {
         usingServer('http://hub.browserstack.com/wd/hub').
         withCapabilities(capabilities).
         build();
-      self.driver.get(self.path);
+      self.driver.get(self.url);
     });
   },
 
   stop: function() {
     var self = this;
+    self.tunnelProcess && self.tunnelProcess.kill();
+    self.tunnelProcess = null;
+
     self.driver && self.driver.quit();
+    self.driver = null;
   },
 
   _getBrowserStackKey: function () {
-    var configureS3 = function () {
-      // calls 's3cmd --dump-config', returns {accessKey: ..., secretKey: ...}
-      var getS3Credentials = function () {
-        var unparsedConfig = execFileSync("s3cmd", ["--dump-config"]);
-        var accessKey = /access_key = (.*)/.exec(unparsedConfig)[1];
-        var secretKey = /secret_key = (.*)/.exec(unparsedConfig)[1];
-        return {accessKey: accessKey, secretKey: secretKey};
-      };
+    var tempDir = files.mkdtemp();
+    var outputDir = path.join(tempDir, "key");
 
-      var s3Credentials = getS3Credentials();
-      var s3 = new AWS.S3({
-        accessKeyId: s3Credentials.accessKey,
-        secretAccessKey: s3Credentials.secretKey,
-        region: 'us-east-1'
-      });
+    try {
+      execFileSync("boogle", ["get",
+        "s3://meteor-browserstack-keys/browserstack-key",
+        outputDir
+      ]);
 
-      return s3;
-    };
-    var s3 = configureS3();
-    var params = { Bucket: 'meteor-browserstack-keys',
-                   Key: 'browserstack-key' };
-    var fut = new Future();
-    s3.getObject(params, function (err, data) {
-      browserStackKey = data.Body.toString().trim();
-      fut['return']();
-    });
-    fut.wait();
+      return fs.readFileSync(outputDir, "utf8");
+    } catch (e) {
+      return null;
+    }
   },
 
   _launchBrowserStackTunnel: function (callback) {
@@ -745,12 +742,15 @@ _.extend(BrowserStackClient.prototype, {
       '-skipCheck'
     ];
 
-    self.tunnelProcess = child_process.spawn(
-      "BrowserStackLocal",
-      args, {
-        cwd: path.join(__dirname, '..')
-      }
-    );
+    self.tunnelProcess = child_process.execFile(
+      '/bin/bash',
+      ['-c', "BrowserStackLocal"].concat(args),
+      function (err, stdout, stderr) {
+        if (stderr.match(/not found/)) {
+          console.log("ERROR: BrowserStackLocal not installed." +
+                      " Install the binary in your PATH.");
+        }
+    });
 
     // Called when the SSH tunnel is established.
     self.tunnelProcess.stdout.on('data', function(data) {
@@ -758,10 +758,9 @@ _.extend(BrowserStackClient.prototype, {
         callback();
     });
 
-    // If the tunnel exits for any reason before the stopTunnel() method is
-    // called than that is an error condition.
-    self.tunnelProcess.on('exit', function (code) {
-      callback(new Error('SSH tunnel exited unexpectedly with code: ' + code));
+    self.tunnelProcess.on('error', function (code) {
+      console.log("Error running BrowserStack. Make sure that " +
+                  "BrowserStackLocal is present in your binary.");
     });
   }
 });
@@ -1104,6 +1103,7 @@ _.extend(Run.prototype, {
   _stopWithoutWaiting: function () {
     var self = this;
     if (self.exitStatus === undefined && self.proc) {
+      self.client && self.client.stop();
       self.proc.kill();
     }
   },
@@ -1359,11 +1359,7 @@ var runTests = function (options) {
     var failure = null;
     try {
       runningTest = test;
-
-      // Bind the test to the options hash so that they have access to the
-      // variables from selftest.define().
-      var boundFunc = test.f.bind(options);
-      boundFunc();
+      test.f(options);
     } catch (e) {
       if (e instanceof TestFailure) {
         failure = e;

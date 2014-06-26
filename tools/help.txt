@@ -307,8 +307,8 @@ pass --force-online.
 Use --history to change the number of lines of program output that are
 shown on test failure. The default is 10.
 
-Pass --phantomjs and/or --browser-stack to enable client side tests. --phantomjs
-requires that phantomjs is installed locally and --browser-stack requires s3cmd
+Pass --phantomjs and/or --browserstack to enable client side tests. --phantomjs
+requires that phantomjs is installed locally and --browserstack requires s3cmd
 credentials.
 
 
