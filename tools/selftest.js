@@ -393,12 +393,12 @@ _.extend(Sandbox.prototype, {
   testWithAllClients: function (f) {
     var self = this;
 
-    if (! self.clients.length)
+    if (self.clients.length) {
+      console.log("running test with " + self.clients.length + " client(s).");
+    } else {
       console.log("running a client test with no clients. Use --browserstack" +
                   " and/or --phantomjs to run against clients." );
-    else
-      console.log("running test with " + self.clients.length + " client(s).");
-
+    }
     _.each(self.clients, function (client) {
       f(new Run(self.execPath, {
         sandbox: self,
@@ -1286,8 +1286,8 @@ var tagDescriptions = {
 
 // options: onlyChanged, offline, includeSlowTests, historyLines, testRegexp
 //          clients:
-//             - phantomJs
-//             - browserStack (need s3cmd credentials)
+//             - phantomjs
+//             - browserstack (need s3cmd credentials)
 var runTests = function (options) {
   var failureCount = 0;
 
