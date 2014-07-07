@@ -11,7 +11,7 @@ PROJECT_DIR="/home/debian/udoo-radio"
 if [ "`ps aux | grep -v grep | grep bin/node | grep meteor | grep tools/main.js | wc -l`" = "0" ]; then
 
 cd $PROJECT_DIR
-rm .meteor/local/db/mongod.lock # in case of previous improper shutdown
+if [ -f "./meteor/local/db/mongod.lock" ]; then rm "./meteor/local/db/mongod.lock" ; fi
 authbind --deep meteor --port 80
 
 else
