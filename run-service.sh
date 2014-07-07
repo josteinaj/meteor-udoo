@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
+set -e
 
 # Use this script to start your meteor project, for instance from crontab with a entry like this:
 # * * * * * /home/debian/meteor-udoo/run-service.sh
 
 # change PROJECT_DIR to the path to your meteor project
-PROJECT_DIR="/home/debian/meteor-udoo/docs"
+PROJECT_DIR="/home/debian/udoo-radio"
 
 
 if [ "`ps aux | grep -v grep | grep bin/node | grep meteor | grep tools/main.js | wc -l`" = "0" ]; then
 
 cd $PROJECT_DIR
+rm .meteor/local/db/mongod.lock # in case of previous improper shutdown
 authbind --deep meteor --port 80
 
 else
