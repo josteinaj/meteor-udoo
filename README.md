@@ -38,7 +38,7 @@ Read more about Meteor on [Meteors GitHub project page](http://github.com/meteor
 
 ## Step 3: Running Meteor as a daemon
 
- 18. Edit `~/meteor-udoo/run-service.sh` and set `PROJECT_DIR` to the absolute path to your meteor project. The default is the meteor "docs" project.
+ 18. Edit `~/meteor-udoo/run-service.sh` and set `PROJECT_DIR` to the absolute path to your meteor project. For instance, try setting it to the meteor "docs" project.
  19. Run `crontab -e` (as a normal user) and add `* * * * * /home/debian/meteor-udoo/run-service.sh` to the end of the file
 
 Once a minute, this will check if your meteor project is running, and start it if it isn't. So if for some reason it crashes it will restart; but most importantly, it will start automatically on boot.
